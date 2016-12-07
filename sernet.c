@@ -1,3 +1,20 @@
+/*
+This file is part of sernet Copyright (C) 2016 Erik de Jong
+
+sernet is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+sernet is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with sernet.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -10,13 +27,17 @@
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <netdb.h>
+#include <signal.h>
 
 int fd;
 int socket_fd;
 int socketConnection;
 
+volatile sig_atomic_t signalStatus = 0;
+
 pthread_t readThread;
 
+// http://stackoverflow.com/questions/6947413/how-to-open-read-and-write-from-serial-port-in-c
 int set_interface_attribs (int fd, int speed, int parity)
 {
     struct termios tty;
@@ -86,6 +107,11 @@ void * fromSerial()
     return NULL;
 }
 
+void terminate(int sig)
+{
+    signalStatus = 1;
+}
+
 int main(int argc, char ** argv)
 {
     struct sockaddr_in socketInfo;
@@ -97,6 +123,8 @@ int main(int argc, char ** argv)
 
     // init serial port
     char *portname = "/dev/ttyAMA0";
+    
+    signal(SIGINT, terminate); 
     fd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
     if (fd < 0) {
         printf ("error %d opening %s: %s\n", errno, portname, strerror (errno));
@@ -122,7 +150,8 @@ int main(int argc, char ** argv)
         return 1;
     }
 
-    while(1) {
+    // exit when sigint received and last connection closed
+    while(!signalStatus) {
         listen(socket_fd, 1);
 	if( (socketConnection = accept(socket_fd, NULL, NULL)) < 0) {
             close(socket_fd);
